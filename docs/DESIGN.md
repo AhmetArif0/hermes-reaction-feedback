@@ -28,6 +28,7 @@ floor in `requires_hermes`), and against a live Telegram bot on 2026-09-28.
 | 11 | Callbacks with `**kwargs` receive the whole payload, so fields added later are safe. | `hermes_cli/plugins_dispatch.py::_hook_callback_kwargs` |
 | 12 | Live bot, private chat: message ids are one sequence shared by both sides (user 12/14/16, bot 13/15/17). A reaction on the user's own message is delivered with the same payload shape (🔥 on 12). The heart arrives as `❤` without U+FE0F. `chat_id == user_id` in a private chat. | Live capture, 2026-09-28 |
 | 13 | The note is placed after the user's text in that turn's request. The saved transcript keeps the plain text, and the exact API string is kept separately in the `api_content` sidecar. Later requests replay it byte for byte, including when a fresh agent is built from `state.db` (checked on 0.21.5 and main: the first 8 of 8 messages are identical between the two requests). | `hermes_state_messages.py` (`api_content`); `tests/test_hermes_integration.py` |
+| 14 | A message with `@` references (`@file:`, `@url:`, `@diff`, plugin prefixes) keeps the typed text in place and gets `\n\n--- Context Warnings ---\n…` and/or `\n\n--- Attached Context ---\n\n…` appended. The gateway passes that expanded text as the turn's `persist_user_message`, which is what `pre_llm_call` receives as `user_message`. | `agent/context_references.py::preprocess_context_references_async`, `gateway/run_inbound.py::_expand_inbound_context_references`, `gateway/run_turn.py::_hmwa_apply_message_timestamp`, `agent/turn_context.py` (`original_user_message`) |
 
 ## How a reaction is attributed
 
@@ -43,7 +44,8 @@ Per profile (`get_hermes_home()` at hook time) and per private chat, the plugin 
    internal. Record an anchor. If it is not a command, it becomes the claim.
 2. **Turn start** (`pre_llm_call`): only when `platform == "telegram"` and a claim exists
    for `sender_id`. If the anchor has text, the turn's `user_message` must end with that
-   text (fact 9). This stops a group turn from the same user claiming a private-chat
+   text (fact 9), either at its very end or right before the `@` reference blocks Hermes
+   appends (fact 14). This stops a group turn from the same user claiming a private-chat
    message. The anchor takes the turn's `session_id`. Pending reactions for that session
    are returned as context and cleared.
 3. **Reaction** (`gateway_platform_event`):
@@ -106,5 +108,7 @@ prompt.
   - A real `AIAgent` turn against Hermes' `FakeLLMServer` must carry the note in the next
     request's user message, and the first request must not.
   - A fresh agent rebuilt from `state.db` must replay that message byte for byte (fact 13).
+  - A turn whose text went through Hermes' own `@` reference expansion still claims its
+    message (fact 14).
 - `hermes plugins validate`, a mutation pass over every rule above, and a final live check
   on the test bot.

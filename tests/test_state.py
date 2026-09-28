@@ -185,6 +185,10 @@ def test_turn_for_another_message_does_not_claim():
     '[Replying to your previous message: "earlier"]\n\nlong question\nsecond line',
     [{"type": "text", "text": "long question\n"}, {"type": "image_url", "image_url": {"url": "x"}},
      {"type": "text", "text": "second line"}],
+    # a message with @-references: Hermes appends their context after the typed text
+    "long question\nsecond line\n\n--- Attached Context ---\n\n📄 @file:notes.txt (3 tokens)\n```\nbody\n```",
+    "long question\nsecond line\n\n--- Context Warnings ---\n- @file:gone.txt: file not found",
+    "long question\nsecond line\n\n--- Context Warnings ---\n- a warning\n\n--- Attached Context ---\n\nblock",
 ])
 def test_turn_text_may_carry_a_reply_prefix_or_parts(user_message):
     ledger = state.ReactionLedger()

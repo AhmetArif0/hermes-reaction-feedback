@@ -152,6 +152,39 @@ def test_a_reaction_reaches_the_next_real_turn(hermes_home):
     ]
 
 
+def _react(message_id: int, emoji: str = "👎") -> None:
+    from hermes_cli.lifecycle import invoke_hook
+
+    assert invoke_hook("gateway_platform_event", platform="telegram", event_type="reaction",
+                       payload={"emojis": [emoji], "custom_emoji_ids": [], "chat_id": CHAT,
+                                "message_id": str(message_id), "thread_id": None}) == []
+
+
+def _turn(session: str, user_message: str) -> str:
+    from hermes_cli.lifecycle import invoke_hook
+
+    results = invoke_hook("pre_llm_call", session_id=session, platform="telegram", sender_id=CHAT,
+                          user_message=user_message)
+    return "".join(r["context"] for r in results if isinstance(r, dict))
+
+
+def test_a_message_with_an_at_reference_still_gets_feedback(hermes_home, tmp_path):
+    """Hermes appends the referenced content after the typed text; the turn is still this message's."""
+    from agent.context_references import preprocess_context_references
+
+    _enable(hermes_home)
+    hermes_plugins.discover_plugins(force=True)
+    (tmp_path / "notes.txt").write_text("release notes", encoding="utf-8")
+    typed = "summarize @file:notes.txt"
+    expanded = preprocess_context_references(typed, cwd=tmp_path, context_length=100_000).message
+    assert expanded.startswith(typed) and expanded != typed
+    assert _dispatch(10, typed) == []
+    assert _turn("dm-session", expanded) == ""
+    _react(11)
+    assert _dispatch(12, "again") == []
+    assert "👎" in _turn("dm-session", "again")
+
+
 def test_group_messages_and_other_platforms_are_left_alone(hermes_home):
     _enable(hermes_home)
     hermes_plugins.discover_plugins(force=True)

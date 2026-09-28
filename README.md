@@ -86,6 +86,12 @@ not affected. This is checked in the tests, including when the history is reload
 
 ## Changes
 
+### 1.0.1
+
+A reaction on the answer to a message with an `@file:`, `@url:` or other `@` reference was
+dropped: Hermes adds the referenced content after the text you typed, so the plugin did not
+recognise that turn as your message's. It now does.
+
 ### 1.0.0
 
 First release.
