@@ -1,0 +1,16 @@
+name: reaction-feedback
+version: 1.0.0
+manifest_version: 2
+api_version: 1
+description: >-
+  Lets the agent see the emoji reactions you leave on its Telegram messages. React 👍 or 👎
+  to a reply and the agent's next turn in that conversation starts with a short note saying so.
+author: AhmetArif0
+license: MIT
+homepage: https://github.com/AhmetArif0/hermes-reaction-feedback
+tags: [telegram, feedback, reactions, gateway]
+requires_hermes: ">=0.21.5"
+provides_hooks:
+  - pre_gateway_dispatch
+  - pre_llm_call
+  - gateway_platform_event
