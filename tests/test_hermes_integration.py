@@ -71,13 +71,14 @@ def test_loads_through_the_real_plugin_manager(hermes_home, tmp_path, monkeypatc
     assert registered == HOOKS
 
 
-def _dispatch(message_id: int, text: str, *, chat_type: str = "dm", chat_id: str = CHAT):
+def _dispatch(message_id: int, text: str, *, chat_type: str = "dm", chat_id: str = CHAT, thread_id=None):
     from gateway.config import Platform
     from gateway.platforms.event import MessageEvent
     from gateway.session import SessionSource
     from hermes_cli.lifecycle import ainvoke_hook
 
-    source = SessionSource(platform=Platform.TELEGRAM, chat_id=chat_id, chat_type=chat_type, user_id=CHAT)
+    source = SessionSource(platform=Platform.TELEGRAM, chat_id=chat_id, chat_type=chat_type, user_id=CHAT,
+                           thread_id=thread_id)
     event = MessageEvent(text=text, source=source, message_id=str(message_id))
     return asyncio.run(ainvoke_hook("pre_gateway_dispatch", event=event, gateway=None, session_store=None))
 
@@ -183,6 +184,18 @@ def test_a_message_with_an_at_reference_still_gets_feedback(hermes_home, tmp_pat
     _react(11)
     assert _dispatch(12, "again") == []
     assert "👎" in _turn("dm-session", "again")
+
+
+def test_topics_that_answer_in_parallel_get_no_misattributed_feedback(hermes_home):
+    _enable(hermes_home)
+    hermes_plugins.discover_plugins(force=True)
+    assert _dispatch(10, "research the migration plan", thread_id="A") == []
+    assert _turn("topic-a", "research the migration plan") == ""
+    assert _dispatch(11, "what time is it in Tokyo", thread_id="B") == []
+    assert _turn("topic-b", "what time is it in Tokyo") == ""
+    _react(12)  # topic A's reply, which Telegram numbered after the user's message in topic B
+    assert _dispatch(14, "and in Osaka", thread_id="B") == []
+    assert _turn("topic-b", "and in Osaka") == ""
 
 
 def test_group_messages_and_other_platforms_are_left_alone(hermes_home):

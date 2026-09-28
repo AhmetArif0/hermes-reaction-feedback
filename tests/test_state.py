@@ -199,6 +199,30 @@ def test_turn_text_may_carry_a_reply_prefix_or_parts(user_message):
     assert '"long question second line"' in turn(ledger, "next")
 
 
+@pytest.mark.parametrize("threads", [("A", "B"), (None, "A")])
+def test_reactions_are_ignored_once_the_chat_has_several_topics(threads):
+    """Topics answer in parallel and share one id sequence; a reaction does not name its topic."""
+    first, second = threads
+    ledger = state.ReactionLedger()
+    ledger.record_user_message(HOME, CHAT, "10", "research the plan", thread_id=first)
+    assert turn(ledger, "research the plan", session="first") is None
+    ledger.record_user_message(HOME, CHAT, "11", "time in Tokyo", thread_id=second)
+    assert turn(ledger, "time in Tokyo", session="second") is None
+    react(ledger, reaction(12, "👎"))  # the first topic's reply, numbered after message 11
+    assert ledger._homes[HOME][CHAT].pending == {}
+    ledger.record_user_message(HOME, CHAT, "14", "and Osaka", thread_id=second)
+    assert turn(ledger, "and Osaka", session="second") is None
+
+
+def test_a_single_topic_works_like_a_plain_chat():
+    ledger = state.ReactionLedger()
+    ledger.record_user_message(HOME, CHAT, "10", "question", thread_id="A")
+    assert turn(ledger, "question") is None
+    react(ledger, reaction(11, "👍"))
+    ledger.record_user_message(HOME, CHAT, "12", "next", thread_id="A")
+    assert "👍" in turn(ledger, "next")
+
+
 def test_message_without_text_claims_the_next_turn():
     ledger = state.ReactionLedger()
     ledger.record_user_message(HOME, CHAT, "10", None)  # e.g. a voice note

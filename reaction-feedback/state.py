@@ -44,6 +44,7 @@ class _Anchor:
     excerpt: str
     match_text: str  # whitespace-normalized typed text; "" when the message had none
     is_command: bool
+    thread: Optional[str] = None  # the private-chat topic it was sent in, if any
     session_id: Optional[str] = None
 
 
@@ -148,8 +149,9 @@ class ReactionLedger:
 
     # -- hook entry points ---------------------------------------------------------------
 
-    def record_user_message(self, home: str, chat_id: Any, message_id: Any, text: Any) -> None:
-        """A user message in a private chat reached the gateway."""
+    def record_user_message(self, home: str, chat_id: Any, message_id: Any, text: Any,
+                            thread_id: Any = None) -> None:
+        """A user message in a private chat (or one of its topics) reached the gateway."""
         chat_key, mid = _as_id(chat_id), _as_id(message_id)
         if chat_key is None or mid is None:
             return
@@ -157,7 +159,8 @@ class ReactionLedger:
         anchor = _Anchor(
             message_id=mid, excerpt=_excerpt(typed),
             match_text=_normalize(typed)[-MATCH_TEXT_CHARS:],
-            is_command=typed.lstrip().startswith("/"))
+            is_command=typed.lstrip().startswith("/"),
+            thread=None if thread_id is None else str(thread_id).strip() or None)
         with self._lock:
             chat = self._chat(home, str(chat_key), create=True)
             index = bisect.bisect_left(chat.ids, mid)
@@ -217,6 +220,10 @@ class ReactionLedger:
                 return  # the user's own message
             if index == 0:
                 return  # older than anything seen in this chat
+            if len({a.thread for a in chat.anchors}) > 1:
+                # Topics answer in parallel and share one id sequence, and a reaction does not
+                # say which topic it is in: the message may come from another topic's turn.
+                return
             anchor = chat.anchors[index - 1]
             if anchor.session_id is None:
                 return  # that message did not start an agent turn (e.g. a slash command)

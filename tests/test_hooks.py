@@ -18,6 +18,7 @@ class Source:
     chat_id: Optional[str] = CHAT
     chat_type: str = "dm"
     user_id: Optional[str] = CHAT
+    thread_id: Optional[str] = None
 
 
 @dataclass
@@ -56,6 +57,11 @@ def test_private_telegram_messages_are_recorded(ledger):
         assert rf.on_user_message(event=Event("hi", "10", Source(platform=platform)), gateway=None,
                                   session_store=None) is None
     assert claims(ledger) == 10
+
+
+def test_the_topic_of_a_message_is_recorded(ledger):
+    rf.on_user_message(event=Event("hi", "10", Source(thread_id="7")))
+    assert ledger._homes[HOME][CHAT].anchors[0].thread == "7"
 
 
 @pytest.mark.parametrize("event", [

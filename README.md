@@ -70,6 +70,11 @@ not affected. This is checked in the tests, including when the history is reload
 
 - **Telegram private chats only.** Groups share one message sequence among many people, and
   Discord reactions are not yet given to plugins.
+- **Private chats with topics** (Telegram threaded mode, `/topic`): reactions are ignored once
+  more than one topic (or the main chat and a topic) has been used recently. Topics answer in
+  parallel and share one message sequence, and Telegram does not say which topic a reaction is
+  in, so the plugin cannot tell which conversation the reacted message came from. With a
+  single topic it works as in a plain chat.
 - **The window, not the exact message.** Hermes does not tell plugins which messages it sent,
   so the note says "a message you sent after …". That is almost always the reply, but it can
   also be a progress update or a cron delivery sent in the same window.
@@ -85,6 +90,12 @@ not affected. This is checked in the tests, including when the history is reload
   ignored rather than guessed.
 
 ## Changes
+
+### 1.0.2
+
+In a private chat with topics, a reaction on one topic's answer could be delivered to another
+topic's conversation, when the two topics were answering at the same time. Such reactions are
+now ignored (see Limits).
 
 ### 1.0.1
 

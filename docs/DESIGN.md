@@ -29,14 +29,15 @@ floor in `requires_hermes`), and against a live Telegram bot on 2026-09-28.
 | 12 | Live bot, private chat: message ids are one sequence shared by both sides (user 12/14/16, bot 13/15/17). A reaction on the user's own message is delivered with the same payload shape (🔥 on 12). The heart arrives as `❤` without U+FE0F. `chat_id == user_id` in a private chat. | Live capture, 2026-09-28 |
 | 13 | The note is placed after the user's text in that turn's request. The saved transcript keeps the plain text, and the exact API string is kept separately in the `api_content` sidecar. Later requests replay it byte for byte, including when a fresh agent is built from `state.db` (checked on 0.21.5 and main: the first 8 of 8 messages are identical between the two requests). | `hermes_state_messages.py` (`api_content`); `tests/test_hermes_integration.py` |
 | 14 | A message with `@` references (`@file:`, `@url:`, `@diff`, plugin prefixes) keeps the typed text in place and gets `\n\n--- Context Warnings ---\n…` and/or `\n\n--- Attached Context ---\n\n…` appended. The gateway passes that expanded text as the turn's `persist_user_message`, which is what `pre_llm_call` receives as `user_message`. | `agent/context_references.py::preprocess_context_references_async`, `gateway/run_inbound.py::_expand_inbound_context_references`, `gateway/run_turn.py::_hmwa_apply_message_timestamp`, `agent/turn_context.py` (`original_user_message`) |
+| 15 | Private-chat topics (Bot API 9.4 threaded mode, `extra.dm_topics`, `/topic`) keep `chat_type == "dm"` and carry the topic in `event.source.thread_id`; each topic is its own session and they run in parallel. Telegram numbers the whole chat in one sequence, and the reaction payload's `thread_id` is always `None` (a `message_reaction` update has no topic). | `plugins/platforms/telegram/adapter.py::_effective_message_thread_id`, `_normalize_reaction_event`; `website/docs/user-guide/messaging/telegram.md` (Private Chat Topics) |
 
 ## How a reaction is attributed
 
 Per profile (`get_hermes_home()` at hook time) and per private chat, the plugin keeps:
 
 - **Anchors**: the user's messages seen by `pre_gateway_dispatch`. Each anchor holds the
-  message id, a short excerpt, whether it is a slash command, and the session id of the
-  agent turn it started (set when `pre_llm_call` claims it).
+  message id, a short excerpt, whether it is a slash command, its topic (if any), and the
+  session id of the agent turn it started (set when `pre_llm_call` claims it).
 - **Claim**: the most recent non-command anchor that no turn has claimed yet.
 - **Pending**: reactions waiting for the next turn, keyed by the reacted message id.
 
@@ -50,6 +51,9 @@ Per profile (`get_hermes_home()` at hook time) and per private chat, the plugin 
    are returned as context and cleared.
 3. **Reaction** (`gateway_platform_event`):
    - An id equal to an anchor is the user's own message: ignored.
+   - If the chat's anchors come from more than one topic (the main chat counts as one), it
+     is ignored: topics answer in parallel, so the message may come from another topic's
+     turn, and the reaction does not say which (fact 15).
    - Otherwise the reacted message falls between the latest anchor before it and the next
      one, so the agent sent it while handling that anchor's turn.
    - If no anchor precedes it (older than what the plugin has seen, e.g. before a
@@ -79,6 +83,9 @@ delivery (fact 4).
 - In memory only. Nothing is written to disk, and pending feedback is lost on restart.
   This is safe because gateway turns and reactions share one process (fact 10).
 - Private chats only: groups share one id sequence across many people.
+- Private chats with topics: only while the last 200 anchors come from one topic (fact 15).
+  Exact attribution across topics needs the ids of the messages Hermes sends (fact 4; the
+  proposed `gateway_message_delivered` observer, hermes-agent #95444).
 - Per chat: 200 anchors, 20 pending reactions, a 48 h TTL for pending entries.
 - Per profile: 256 chats that have had a turn, 32 that have not. Messages from users who
   are not allowed to use the bot (the hook runs before auth) can only evict the unverified
@@ -109,6 +116,6 @@ prompt.
     request's user message, and the first request must not.
   - A fresh agent rebuilt from `state.db` must replay that message byte for byte (fact 13).
   - A turn whose text went through Hermes' own `@` reference expansion still claims its
-    message (fact 14).
+    message (fact 14), and two topics answering in parallel get no feedback (fact 15).
 - `hermes plugins validate`, a mutation pass over every rule above, and a final live check
   on the test bot.

@@ -45,7 +45,8 @@ def on_user_message(event: Any = None, **_kwargs: Any) -> None:
         home = _profile_home()
         if home is not None:
             LEDGER.record_user_message(home, getattr(source, "chat_id", None),
-                                       getattr(event, "message_id", None), getattr(event, "text", None))
+                                       getattr(event, "message_id", None), getattr(event, "text", None),
+                                       getattr(source, "thread_id", None))
     except Exception:
         logger.debug("reaction-feedback: could not record a message", exc_info=True)
     return None
